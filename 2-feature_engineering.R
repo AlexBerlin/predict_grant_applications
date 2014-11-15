@@ -3,6 +3,7 @@ library(plyr)
 library(PerformanceAnalytics)
 library(lubridate)
 
+
 ######################################################################
 ###
 ### Create a DF with vertical information, i.e. for each person in each grant
