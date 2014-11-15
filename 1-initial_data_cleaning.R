@@ -10,6 +10,7 @@ for (i in 1:15){
 ### Get unique roles
 roles <- unique(roles)
 
+
 ######################################################################
 ###
 ### Initial data cleaning of rawdata
