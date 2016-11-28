@@ -1,9 +1,10 @@
 ---
 title: "Predict Grant Applications"
 output:
+  pdf_document: default
   html_document:
-    theme: readable
     highlight: textmate
+    theme: readable
 ---
 
 ## Predict Grant Applications
@@ -13,13 +14,14 @@ Some information on the dataset:
 > This task requires participants to predict the outcome of grant applications for the University of
 Melbourne.
 
-### Load necessary R packages
+### Load R packages
 
 ```{r, message=FALSE}
 # library(Amelia)
 library(randomForest)
 library(pROC)
 library(caret)
+library(stringi)
 library(dplyr)
 library(tidyr)
 ```
@@ -41,6 +43,7 @@ for (i in 1:15) {
 ### Get unique roles
 roles <- unique(roles)
 
+# Display 'roles'
 sort(roles)
 ```
 
@@ -54,37 +57,29 @@ Amelia::missmap(rawdata, rank.order = FALSE, x.cex = 0.01, y.cex = 0.01)
 names(rawdata)[names(rawdata) == "Contract.Value.Band...see.note.A"] <- 
   "Contract.Value.Band"
 
-### Convert features from factors to character vectors for easier manipulation
-rawdata$Sponsor.Code <- as.character(rawdata$Sponsor.Code)
+### Convert columns from factors to character vectors for easier manipulation
+rawdata$Sponsor.Code        <- as.character(rawdata$Sponsor.Code)
 rawdata$Grant.Category.Code <- as.character(rawdata$Grant.Category.Code)
 rawdata$Contract.Value.Band <- as.character(rawdata$Contract.Value.Band)
 
+
 ### Deal with missing values in these columns and re-transform to factors
-
 # Sponsor.Code
-rawdata$Sponsor.Code[rawdata[, "Sponsor.Code"] == ""] <- "Unk"
-
-rawdata$Sponsor.Code <- factor(paste("Sponsor", rawdata$Sponsor.Code, sep = ""))
+rawdata$Sponsor.Code[rawdata$Sponsor.Code == ""] <- "Unk"
+rawdata$Sponsor.Code <- factor(paste0("Sponsor", rawdata$Sponsor.Code))
 
 # Grant.Category.Code
-rawdata$Grant.Category.Code[rawdata[, "Grant.Category.Code"] == ""] <- "Unk"
+rawdata$Grant.Category.Code[rawdata$Grant.Category.Code == ""] <- "Unk"
+rawdata$Grant.Category.Code <- factor(paste0("Grant.Category", rawdata$Grant.Category.Code))
 
-rawdata$Grant.Category.Code <- factor(paste("Grant.Category",
-                                            rawdata$Grant.Category.Code, sep = ""))
 # Contract.Value.Band
-rawdata$Contract.Value.Band[rawdata[, "Contract.Value.Band"] == ""] <- "Unk"
-
-rawdata$Contract.Value.Band <- factor(paste("Contract.Value.Band",
-                                            rawdata$Contract.Value.Band, sep = ""))
+rawdata$Contract.Value.Band[rawdata$Contract.Value.Band == ""] <- "Unk"
+rawdata$Contract.Value.Band <- factor(paste0("Contract.Value.Band", rawdata$Contract.Value.Band))
 ```
 
 ### Create a data frame with vertical information, i.e. for each person in each grant
 
 ```{r}
-### Look at column names of 'rawdata'
-data.frame(column_1_21 = names(rawdata)[1:21], 
-           column_22_42 = names(rawdata)[22:42])
-
 ### Create list in global environment
 temp.list <- vector("list", length = 15)
 
@@ -97,12 +92,11 @@ for (i in 1:15) {
   # "Role.1", "With.PHD.1", etc. for the 'temp' data frame.
   # Additionally, the "Grant.Application.ID" is saved as well to preserve the identify 
   # of the grants. 
-  temp <- rawdata[, c("Grant.Application.ID", 
-                      grep(paste("\\.", i, "$", sep = ""), 
-                           names(rawdata), value = TRUE))]
+  temp <- rawdata[, c("Grant.Application.ID", grep(paste0("\\.", i, "$"), 
+                                                   names(rawdata), value = TRUE))]
   
   # Clean name of columns of temp
-  names(temp) <- gsub(paste("\\.", i, "$", sep = ""), "", names(temp))
+  names(temp) <- gsub(paste0("\\.", i, "$"), "", names(temp))
   
   # Initial step
   if (i == 1) temp.names <- names(temp)
@@ -188,10 +182,12 @@ Set "Role" and "Year.of.Birth" to factor, thereby also removing the obsolute "" 
 &nbsp;
 
 ```{r}
-### Remove unwanted level "" from Role column
+### Role
+# Remove unwanted level ""
 vertical$Role <- factor(as.character(vertical$Role))
 
-### YOB as factor
+### Year.of.Birth
+# Convert to factor
 vertical$Year.of.Birth <- factor(vertical$Year.of.Birth)
 ```
 
@@ -202,53 +198,65 @@ Further data cleaning:
 &nbsp;
 
 ```{r}
-### Replace space with dots
-vertical$Country.of.Birth <- gsub(" ", ".", as.character(vertical$Country.of.Birth))
+### Country.of.Birth
+# Replace space with dots
+vertical$Country.of.Birth <- stri_replace_all_regex(as.character(vertical$Country.of.Birth), 
+                                                    pattern = " ", replacement = "_")
 
-### Set proper NA values
+# Set proper NA values
 vertical$Country.of.Birth[vertical$Country.of.Birth == ""] <- NA
 
-### Previous step made column a character vector, but we need a factor
+# Previous step made column a character vector, but we need a factor
 vertical$Country.of.Birth <- factor(vertical$Country.of.Birth)
 
 ### For Home.Language
+# Set proper NA values
 vertical$Home.Language[vertical$Home.Language == ""] <- NA
 
-### Previous step made column a character vector, but we need a factor
+# Previous step made column a character vector, but we need a factor
 vertical$Home.Language <- factor(vertical$Home.Language)
 
-### Replace integers with characters, set NAs and the vector as a factor
-vertical$Dept.No. <- paste("Dept", vertical$Dept.No., sep = "")
+### Dept.No.
+# Replace integers with characters, set NAs and the vector as a factor
+vertical$Dept.No.                                <- paste0("Dept", vertical$Dept.No.)
 vertical$Dept.No.[vertical$Dept.No. == "DeptNA"] <- NA
-vertical$Dept.No. <- factor(vertical$Dept.No.)
+vertical$Dept.No.                                <- factor(vertical$Dept.No.)
 
-### Same as last step
-vertical$Faculty.No. <- paste("Faculty", vertical$Faculty.No., sep = "")
+### Faculty.No.
+# Same as for Dept.No.
+vertical$Faculty.No.                                      <- paste0("Faculty", 
+                                                                    vertical$Faculty.No.)
 vertical$Faculty.No.[vertical$Faculty.No. == "FacultyNA"] <- NA
-vertical$Faculty.No. <- factor(vertical$Faculty.No.)
+vertical$Faculty.No.                                      <- factor(vertical$Faculty.No.)
 
-### Same as last two steps. Replace frequent codes with NA
-vertical$RFCD.Code <- paste("RFCD", vertical$RFCD.Code, sep = "")
-vertical$RFCD.Percentage[vertical$RFCD.Code == "RFCDNA"] <- NA
-vertical$RFCD.Code[vertical$RFCD.Code == "RFCDNA"] <- NA
-vertical$RFCD.Percentage[vertical$RFCD.Code == "RFCD0"] <- NA
-vertical$RFCD.Code[vertical$RFCD.Code == "RFCD0"] <- NA
+### RFCD.Code
+# Same as previous steps. 
+# Also replace certain frequent codes with NA
+vertical$RFCD.Code                                           <- paste0("RFCD", 
+                                                                       vertical$RFCD.Code)
+vertical$RFCD.Percentage[vertical$RFCD.Code == "RFCDNA"]     <- NA
+vertical$RFCD.Code[vertical$RFCD.Code == "RFCDNA"]           <- NA
+vertical$RFCD.Percentage[vertical$RFCD.Code == "RFCD0"]      <- NA
+vertical$RFCD.Code[vertical$RFCD.Code == "RFCD0"]            <- NA
 vertical$RFCD.Percentage[vertical$RFCD.Code == "RFCD999999"] <- NA
-vertical$RFCD.Code[vertical$RFCD.Code == "RFCD999999"] <- NA
-vertical$RFCD.Code <- factor(vertical$RFCD.Code)
+vertical$RFCD.Code[vertical$RFCD.Code == "RFCD999999"]       <- NA
+vertical$RFCD.Code                                           <- factor(vertical$RFCD.Code)
 
-### As the last step
-vertical$SEO.Code <- paste("SEO", vertical$SEO.Code, sep = "")
-vertical$SEO.Percentage[vertical$SEO.Code == "SEONA"] <- NA
-vertical$SEO.Code[vertical$SEO.Code == "SEONA"] <- NA
-vertical$SEO.Percentage[vertical$SEO.Code == "SEO0"] <- NA
-vertical$SEO.Code[vertical$SEO.Code  == "SEO0"] <- NA
+### SEO.Code
+# As the previous step
+vertical$SEO.Code                                         <- paste0("SEO", 
+                                                                    vertical$SEO.Code)
+vertical$SEO.Percentage[vertical$SEO.Code == "SEONA"]     <- NA
+vertical$SEO.Code[vertical$SEO.Code == "SEONA"]           <- NA
+vertical$SEO.Percentage[vertical$SEO.Code == "SEO0"]      <- NA
+vertical$SEO.Code[vertical$SEO.Code  == "SEO0"]           <- NA
 vertical$SEO.Percentage[vertical$SEO.Code == "SEO999999"] <- NA
-vertical$SEO.Code[vertical$SEO.Code == "SEO999999"] <- NA
-vertical$SEO.Code <- factor(vertical$SEO.Code)
+vertical$SEO.Code[vertical$SEO.Code == "SEO999999"]       <- NA
+vertical$SEO.Code                                         <- factor(vertical$SEO.Code)
 
-### The levels used here full of space and hence unwieldy
-### Change to more appropiate levels
+### No..of.Years.in.Uni.at.Time.of.Grant
+# The levels used here are full of space and hence unwieldy -
+# Change to more appropiate levels
 table(vertical$No..of.Years.in.Uni.at.Time.of.Grant)
 
 vertical$No..of.Years.in.Uni.at.Time.of.Grant <- 
@@ -272,11 +280,12 @@ vertical$No..of.Years.in.Uni.at.Time.of.Grant[
 vertical$No..of.Years.in.Uni.at.Time.of.Grant[
   vertical$No..of.Years.in.Uni.at.Time.of.Grant == "Less than 0"] <- "DurationLT0"
 
-### Set vector to factors again
+# Set vector to factors again
 vertical$No..of.Years.in.Uni.at.Time.of.Grant <- 
   factor(vertical$No..of.Years.in.Uni.at.Time.of.Grant)
 
-### Again, NAs and factor
+### With.PHD
+# Again, NAs and factor
 vertical$With.PHD[vertical$With.PHD == ""]  <- NA
 vertical$With.PHD <- factor(vertical$With.PHD)
 ```
